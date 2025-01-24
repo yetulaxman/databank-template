@@ -41,6 +41,33 @@ def getFormFactorAndTotalDensityPair(
     return FFsim, TDsim
 
 
+def getPOPC(
+    system: dict[str, Any], databankPath: str
+) -> tuple[Optional[list[Any]], Optional[list[Any]]]:
+    """
+    Returns POPC of the simulation
+
+    :param system: NMRlipids databank dictionary describing the simulation
+    :param databankPath: Path to the databank
+
+    :return: POPC of the simulation
+    """
+    databankPath = Path(databankPath)
+    eq_times_path = (
+        databankPath / "Data" / "Simulations" / system["path"] / "eq_times.json"
+    )
+
+    # Load POPC file
+    try:
+        with open(eq_times_path, "r") as json_file:
+            eq_times = json.load(json_file)
+            POPC = eq_times["POPC"]
+    except Exception:
+        POPC = None
+
+    return POPC
+
+
 def plot_total_densities_to_ax(
     ax: Axes,
     all_td_x: list[float],
@@ -234,46 +261,6 @@ def interpolate_with_GPR(
         rescale_back_to_true_range(y_vector, global_min_td_y, global_max_td_y)
         for y_vector in interpolated_y
     ]
-
-
-def split_train_and_test(
-    sim_FF_df: pd.DataFrame,
-    sim_TD_y_df: pd.DataFrame,
-    system_ids: np.ndarray,
-    rng: np.random.Generator,
-    train_proportion: float,
-) -> tuple[
-    pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, np.ndarray, np.ndarray
-]:
-    """
-    Split FF (input) and TD (output) pairs into train and test input and output pairs
-
-    :param sim_FF_df: Data frame containing form factors
-    :param sim_TD_y_df: Data frame containing total density profiles in the same order as sim_FF_df
-    :param system_ids: Index of system_ids for all 
-    :param rng: random number generator created and seeded at the beginning of the main script
-    :param train_proportion: Desired proportion of train cases
-
-    :return: 
-    train_input (FF), train_output (TD), test_input (FF), test_output (TD): Train and test data
-    train_ids, test_ids: system id indexes for the train and test sets
-    """
-    N_total = sim_FF_df.shape[0]
-    N_train = int(round(train_proportion * N_total, 0))
-    shuffle_indices = rng.permutation(N_total)
-    train_indices = shuffle_indices[0:N_train]
-    test_indices = shuffle_indices[N_train:]
-
-    # Use train and test indices to select the right input cases, and convert to numpy float values
-    train_input = sim_FF_df.loc[train_indices, :].astype(np.float32)
-    train_output = sim_TD_y_df.loc[train_indices, :].astype(np.float32)
-    train_ids = system_ids[train_indices]
-
-    test_input = sim_FF_df.loc[test_indices, :].astype(np.float32)
-    test_output = sim_TD_y_df.loc[test_indices, :].astype(np.float32)
-    test_ids = system_ids[test_indices]
-
-    return train_input, train_output, test_input, test_output, train_ids, test_ids
 
 
 def plot_training_trajectory(ax: Axes, history: object) -> Axes:
