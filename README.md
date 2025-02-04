@@ -5,7 +5,7 @@ Template for using the NMRlipids databank
 The notebook shows how a neural net can be trained to predict total densities from form factors with the NMR lipids database
 
 ## Installing dependencies
-The form factor to total density notebook uses Poetry for package handling. Dependencies for running notebooks can be installed using:
+The form factor to total density notebook uses Poetry for package handling. Dependencies for running the notebook can be seen in pyprojects.toml, and can be installed using:
 \```bash
 poetry install
 \```
