@@ -5,8 +5,12 @@ import pandas as pd
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, ConstantKernel
 from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 from typing import Any, Optional
 from pathlib import Path
+import tensorflow as tf
+from tensorflow import keras
+from keras import layers, models
 
 
 def getFormFactorAndTotalDensityPair(
@@ -41,31 +45,30 @@ def getFormFactorAndTotalDensityPair(
     return FFsim, TDsim
 
 
-def getPOPC(
+def getEq_times(
     system: dict[str, Any], databankPath: str
 ) -> tuple[Optional[list[Any]], Optional[list[Any]]]:
     """
-    Returns POPC of the simulation
+    Returns eq_times of the simulation
 
     :param system: NMRlipids databank dictionary describing the simulation
     :param databankPath: Path to the databank
 
-    :return: POPC of the simulation
+    :return: eq_times of the simulation
     """
     databankPath = Path(databankPath)
     eq_times_path = (
         databankPath / "Data" / "Simulations" / system["path"] / "eq_times.json"
     )
 
-    # Load POPC file
+    # Load eq_times
     try:
         with open(eq_times_path, "r") as json_file:
             eq_times = json.load(json_file)
-            POPC = eq_times["POPC"]
     except Exception:
-        POPC = None
+        eq_times = None
 
-    return POPC
+    return eq_times
 
 
 def plot_total_densities_to_ax(
@@ -111,7 +114,7 @@ def plot_form_factors_to_ax(
     :return: ax object with form factors plotted
     """
     for index, row in sim_FF_df.iterrows():
-        ax.plot(row.to_list())
+        ax.plot(row.to_list(), linewidth=0.5)
     ax.set_xlabel(x_axis_label_ff)
     ax.set_ylabel(y_axis_label_ff)
     return ax
@@ -181,7 +184,9 @@ def extrapolate_Y(
     return np.concatenate([padding_start, y_vector, padding_end])
 
 
-def rescale_to_zero_centered_unit_range(values, min_value, max_value):
+def rescale_to_zero_centered_unit_range(
+    values: np.ndarray, min_value: float, max_value: float
+):
     """
     Rescale values to [-0.5, 0.5] range consistent with provided global min and max values
 
@@ -194,7 +199,7 @@ def rescale_to_zero_centered_unit_range(values, min_value, max_value):
     return (values - min_value) / (max_value - min_value) - 0.5
 
 
-def rescale_back_to_true_range(values, min_value, max_value):
+def rescale_back_to_true_range(values: np.ndarray, min_value: float, max_value: float):
     """
     Rescale values back to original range
 
@@ -272,7 +277,169 @@ def plot_training_trajectory(ax: Axes, history: object) -> Axes:
 
     :return: ax object with training history plotted
     """
-    ax.plot(history.history["loss"], color="green", label="Training loss")
-    ax.plot(history.history["val_loss"], color="orange", label="Validation loss")
+    ax.plot(history["loss"], color="green", label="Training loss")
+    if "val_loss" in history:
+        ax.plot(history["val_loss"], color="orange", label="Validation loss")
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Loss")
+    ax.set_title("Training History (Final Re-Fit)")
     ax.legend()
     return ax
+
+
+def plot_absolute_deviation_to_ax(
+    fig: Figure,
+    ax: Axes,
+    x_values: np.ndarray,
+    absolute_deviation: np.ndarray,
+    x_axis_label_td: str,
+    y_axis_label_td: str,
+    title: str = "",
+    height: float = 6,
+    width: float = 8,
+    label: str = "",
+) -> Axes:
+    """
+    Plot absolute deviation to ax
+
+    :param ax: Axes object to plot on
+    :param absolute_deviation: Absolute deviation in total density
+
+    :return: ax object with absolute deviations plotted
+    """
+    if len(absolute_deviation.shape) == 1:
+        ax.plot(x_values, absolute_deviation, linestyle="-", label=label)
+        ax.legend()
+    else:
+        for residuals in absolute_deviation:
+            ax.plot(x_values, residuals, color="k", linestyle="-", alpha=0.2)
+    ax.set_xlabel(x_axis_label_td)
+    ax.set_ylabel(y_axis_label_td)
+    fig.set_figheight(height)
+    fig.set_figwidth(width)
+    ax.set_ylim(bottom=0)
+    ax.set_title(title)
+    plt.tight_layout()
+    return fig, ax
+
+
+def add_noise_to_form_factor(
+    form_factor_df: pd.DataFrame,
+    steepness: float = 10.0,
+    max_noise_magnitude: float = 1.0,
+    probability_of_noise: float = 1.0,
+) -> pd.DataFrame:
+    """
+    Adds random noise to each row of the input DataFrame, with noise amplitude determined by a pure sigmoid function (scaled by `max_noise_magnitude`) across the columns. The amplitude starts near 0 in the first column and approaches `max_noise_magnitude` in the last column.
+
+    The amplitude for column i is calculated as:
+        amplitude(i) = max_noise_magnitude * [ 1 / (1 + exp(-steepness * (fraction - 0.5))) ]
+    where fraction = i / (num_cols - 1).
+
+    :param form_factor_df: A pandas DataFrame where each row is a form factor
+    :param steepness: Controls how quickly the sigmoid transitions from 0 to max_noise_magnitude. Higher values make the transition sharper around the midpoint.
+    :param max_noise_magnitude: The maximum amplitude of the noise (occurs at the highest q value).
+    :param probability_of_noise: The chance that a single form factor will be noisy.
+
+    :return: A new pandas DataFrame of the same shape, with column-wise noise added.
+    """
+    num_rows, num_cols = form_factor_df.shape
+
+    # Array of values from 0 to 1 in the dimension of q, to make the sigmoid
+    fraction_array = np.linspace(0.0, 1.0, num_cols)
+
+    # Noise amplitudes follow the logistic (sigmoid) function, scaled by max_noise_magnitude
+    # At fraction=0, amplitude ~ 0; at fraction=1, amplitude ~ max_noise_magnitude
+    noise_amplitudes = max_noise_magnitude * (
+        1.0 / (1.0 + np.exp(-steepness * (fraction_array - 0.5)))
+    )
+
+    # Replicate amplitudes for each row. The shape becomes (num_rows, num_cols)
+    scale_array = np.tile(noise_amplitudes, (num_rows, 1))
+
+    # Generate a mask indicating which rows should receive noise (80% probability)
+    noise_mask = np.random.rand(num_rows) < probability_of_noise
+
+    # Generate random noise with per-column standard deviation according to noise_amplitudes
+    noise = np.random.normal(loc=0.0, scale=scale_array)
+
+    # Add noise to the original data
+    noisy_values = form_factor_df.values.copy()
+    noisy_values[noise_mask] += noise[noise_mask]
+
+    # Return as a DataFrame (preserving index and columns)
+    return pd.DataFrame(
+        noisy_values, index=form_factor_df.index, columns=form_factor_df.columns
+    )
+
+
+def build_fully_connected_model(
+    input_dim: int,
+    hidden_layer_dims: tuple[int, ...],
+    output_dim: int,
+) -> tf.keras.Model:
+    """
+    Builds and compiles a fully connected neural network Keras model.
+
+    :param input_dim: Dimension of the input to the neural network
+    :param hidden_layer_dims: A tuple specifying the number of nodes in each hidden layer
+    :param output_dim: Dimension of the output layer
+
+    :return: A compiled TensorFlow Keras Model ready for training
+    """
+    keras_input = keras.Input(shape=(input_dim,))
+    x = keras_input
+
+    # Create as many hidden layers as specified in hidden_layer_dims
+    for dim in hidden_layer_dims:
+        x = layers.Dense(dim, activation="relu")(x)
+
+    # Final output layer
+    output_layer = layers.Dense(output_dim, activation="linear")(x)
+
+    model = tf.keras.Model(inputs=keras_input, outputs=output_layer)
+    model.compile(
+        optimizer=tf.keras.optimizers.AdamW(amsgrad=True),
+        loss="mean_squared_error",
+        metrics=["mae"],
+    )
+    return model
+
+
+def build_convolution_model(
+    input_dim: int,
+    hidden_layer_filters: tuple[int, ...],
+    output_dim: int,
+    kernel_size: int = 3,
+    activation_function: str = "relu",
+) -> tf.keras.Model:
+    """
+    Builds and compiles a 1D convolutional model for regression.
+
+    :param input_dim: The length of the input sequence.
+    :param output_dim: The dimension of the output layer.
+    :param kernel_size: The size of the convolution kernel.
+    :param activation_function: The activation function to use in the Conv1D layers.
+
+    :return: A compiled 1D convolutional tf.keras.Model neural network model
+    """
+    keras_input = tf.keras.Input(shape=(input_dim, 1))
+    x = keras_input
+
+    # Create as many hidden layers as specified in hidden_layer_filters
+    for n_filters in hidden_layer_filters:
+        x = layers.Conv1D(
+            filters=n_filters,
+            kernel_size=kernel_size,
+            padding="same",
+            activation=activation_function,
+        )(x)
+        x = layers.MaxPooling1D(pool_size=2)(x)
+
+    # Flatten and final dense layer
+    x = layers.Flatten()(x)
+    outputs = layers.Dense(output_dim, activation=None)(x)
+
+    model = models.Model(inputs=keras_input, outputs=outputs)
+    model.compile(optimizer="adam", loss="mse", metrics=["mae"])
+    return model

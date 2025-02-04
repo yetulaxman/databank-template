@@ -1,0 +1,29 @@
+[tool.poetry]
+name = "nmrlipids"
+version = "0.1.0"
+description = "Tutorial for accessing NMR lipids databank through their API and training a neural network"
+authors = ["Even Moa Myklebust <even@simula.no>"]
+readme = "README.md"
+license = "Proprietary"
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.13"
+pandas = "^2.2.3"
+tensorflow = "^2.10.0"
+matplotlib = "^3.9.2"
+tqdm = "^4.67.0"
+pyyaml = "^6.0.2"
+mdanalysis = "^2.7.0"
+scikit-learn = ">=1.5.2,<1.5.3"
+ipywidgets = "^8.1.5"
+pathlib = "^1.0.1"
+scikeras = "^0.13.0"
+pre-commit = "^4.1.0"
+
+
+[tool.poetry.group.dev.dependencies]
+ipykernel = "^6.29.5"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
