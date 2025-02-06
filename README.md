@@ -10,7 +10,7 @@ The form factor to total density notebook uses Poetry for package handling. Depe
 poetry install
 \```
 
-## About this repository
+## About the notebook
 The form factor to total density notebook is intended to give a starting point to the [NMRlipids databank](https://nmrlipids.github.io).
 
 This includes an overview of accessing data using the NMR lipids API, exploring the data, and examples of using machine learning to make predictions of total electron densities from form factors. 
