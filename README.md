@@ -39,3 +39,11 @@ Notebook demonstrate the basic usage examples:
 - viewing precomputed data for the simulation
 - download the trajectory and computes P-N angle from it.
 
+## plotQuality.ipynb
+
+Notebook show tables with comparing-to-experiments statistics.
+
+## library.py
+
+Example of how complicated things can be extracted from the Databank (under construction)..
+
