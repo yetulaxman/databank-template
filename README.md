@@ -24,3 +24,18 @@ The notebook contains the following steps:
 
 ## Background 
 The notebook is based on initial work by the [CellScatter project](https://github.com/K123AsJ0k1/CellScatter/tree/main). 
+
+
+# NMRlipids Databank Usage Templates
+
+Separated repository collecting usage examples of [NMRlipids Databank](https://github.com/NMRlipids/Databank) API.
+To consult the API documentation, please visit https://nmrlipids.github.io/databankLibrary.html.
+
+## template.ipynb
+
+Notebook demonstrate the basic usage examples: 
+- loading the Databank
+- viewing metadata for a simulation
+- viewing precomputed data for the simulation
+- download the trajectory and computes P-N angle from it.
+
